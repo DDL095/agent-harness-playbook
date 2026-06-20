@@ -177,9 +177,13 @@ The `.task_cache/<task_id>/` layout **must be fixed**. Reasons:
 #### Design point 3: Foreman's "three forbiddens"
 
 The template forbids foreman from 3 things:
-- ❌ Spawn other subagents (nesting explosion)
+- ❌ Spawn other subagents (**foreman-role-specific restriction**: source SAs are managed by the main session)
 - ❌ Read raw data content (only read progress.json, saves tokens)
 - ❌ Modify sub-task pageId or files (avoid conflicts)
+
+> ⚠️ **Important distinction**: the first rule "❌ Spawn other subagents" is a **foreman-role-specific restriction** (because source SAs are managed directly by the main session, foreman doesn't need to spawn lower layers). **Other non-foreman layer-1 SAs are NOT subject to this restriction** — they may spawn lower layers per the "two-layer nesting rule", just forced to use the cheapest-token model.
+>
+> These two concepts were once conflated by the same phrasing "❌ Spawn other subagents (two-layer nesting forces cheapest model)", causing AI to incorrectly generalize the foreman-specific restriction to all layer-1 SAs. The template has been corrected to distinguish them explicitly.
 
 Violating any of these causes token explosion or state chaos.
 

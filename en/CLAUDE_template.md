@@ -174,6 +174,31 @@ How to detect: subagent marks itself as "layer-N subagent" in its prompt. When s
 
 **Reason**: deeper nesting = more context reinjection; cheap / long-context models fit deep nesting best.
 
+## 3.5 Prompt injection norm for layer-1 SAs
+
+**Principle**: when injecting prompts, **reference the protocol rules** rather than issuing direct behavior directives.
+
+| ✅ Recommended (rule reference) | ❌ Avoid (behavior directive) |
+|---|---|
+| "Regarding whether to spawn layer-2 subagents, follow Subagent Protocol §3" | "Do not spawn any lower-layer subagents" |
+| "Handle nested subagent dispatch per Subagent Protocol §3 two-layer nesting rule" | "You cannot spawn lower layers" / "Nested forbidden" |
+
+**Recommended prompt header template**:
+
+```
+You are a layer-1 subagent, dispatched by the main session to execute <task type>.
+Regarding whether to spawn lower-layer subagents, follow Subagent Protocol §3 two-layer nesting rule.
+Simple tasks: judge autonomously, no need to spawn lower layers.
+Complex tasks: spawning lower layers is allowed, but must use `<CHEAPEST_MODEL>`, no asking the user.
+```
+
+**Reasons**:
+1. Scenarios vary — hardcoded directives block legitimate decomposition
+2. Protocol already exists — CLAUDE.md covers all scenarios, no need to duplicate hardcoded directives in prompts
+3. AI can self-adapt — simple tasks: SA judges autonomously; complex tasks: spawns lower layers per rule
+
+> 💡 This section is a **principle**, not an IRON RULE. The counter-examples are illustrative only and do not constitute a blacklist; what actually holds is the positive principle of "rule reference over behavior directive".
+
 ## 4. Must ask before spawning (IRON RULE)
 
 Before calling `runSubagent`, **must** first call `vscode_askQuestions` (or equivalent user-prompt tool):
@@ -275,7 +300,8 @@ while True:
 - Final return ≤500-word summary
 
 **Forbidden**:
-- ❌ Spawn other subagents (two-layer nesting forces cheapest model)
+- ❌ Spawn other subagents (**foreman-role-specific restriction**: source SAs are managed directly by the main session, foreman itself doesn't need to spawn lower layers)
+- ℹ️ **Other non-foreman layer-1 SAs are NOT subject to this restriction** — per Subagent Protocol §3 two-layer nesting rule: spawning lower layers is allowed, but must use the cheapest-token model, no asking
 - ❌ Read raw data content (only read progress.json)
 - ❌ Modify sub-task pageId or files
 

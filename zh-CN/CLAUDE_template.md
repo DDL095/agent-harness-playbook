@@ -174,6 +174,31 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 
 **原因**：嵌套层数越多，上下文注入越冗余；把便宜/长 context 的模型留给深层嵌套。
 
+## 三.5、主会话注入给第 1 层 SA 的 prompt 规范
+
+**原则**：注入 prompt 时应**引用协议规则**，而非直接下达行为指令。
+
+| ✅ 推荐（规则引用） | ❌ 避免（行为指令） |
+|---|---|
+| "关于是否可拉下层 subagent，按 SUBAGENT 调度协议 §3 执行" | "不要拉起任何下层 subagent" |
+| "按 SUBAGENT-PROTOCOL §3 两层嵌套规则处理 nested subagent 调度" | "你不能拉下层" / "禁止 nested" |
+
+**推荐 prompt 头部模板**：
+
+```
+你是第 1 层 subagent，由主会话派出执行 <任务类型>。
+关于是否可拉下层 subagent，按 SUBAGENT 调度协议 §3 两层嵌套规则执行。
+简单任务：自主判断不需拉下层。
+复杂任务：允许拉下层，强制用 `<CHEAPEST_MODEL>`，不再询问用户。
+```
+
+**原因**：
+1. 场景多变——硬指令会让该拆的拆不开
+2. 协议已存在——CLAUDE.md 已覆盖所有场景，无需在 prompt 里重复硬指令
+3. AI 可自适应——简单任务 SA 自主判断，复杂任务按规则拉下层
+
+> 💡 本节是**原则**而非 IRON RULE。反面示例仅作说明，不构成黑名单；真正生效的是"规则引用优先于行为指令"这个正向原则。
+
 ## 四、拉起前必须询问（IRON RULE）
 
 调用 `runSubagent` 前**必须**先 `vscode_askQuestions`（或等价的用户询问工具）：
@@ -275,7 +300,8 @@ while True:
 - 最终返回 ≤500 字汇总
 
 **禁止**：
-- ❌ 拉起其他 subagent（两层嵌套强制用最省 token 模型）
+- ❌ 拉起其他 subagent（**foreman 角色专属限制**：数据源 SA 由主会话直接管，foreman 自己不需要拉下层）
+- ℹ️ **其他非 foreman 的第 1 层 SA 不受此限制**，按 SUBAGENT 调度协议 §3 两层嵌套规则执行：允许拉下层，但强制用最省 token 模型，不再询问
 - ❌ 读原始数据内容（只读 progress.json）
 - ❌ 修改子任务的 pageId 或文件
 
