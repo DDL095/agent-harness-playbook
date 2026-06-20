@@ -1,0 +1,16 @@
+# CLAUDE.md long-task cache & audit logs
+.task_cache/
+.research_cache/
+.audit/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Lockfiles (if you later convert this to a package)
+package-lock.json
+yarn.lock
+__pycache__/
+*.pyc
