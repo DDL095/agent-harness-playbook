@@ -143,7 +143,7 @@ if ($beforeTotal -ne $afterTotal -or $beforeCount -ne $afterCount) {
 
 强制所有 LLM（无论主会话是哪个模型）按统一规范拉起 subagent。
 
-## 一、必须拉起 subagent 的场景
+## §1 必须拉起 subagent 的场景
 
 1. **独立的代码搜索/读取**（读 3 个以上文件、跨目录搜索）→ 拉 `explore` 类 subagent
 2. **独立的研究/分析任务**（文献检索、数据解读、技术调研）→ 拉 `research` 类 subagent
@@ -153,7 +153,7 @@ if ($beforeTotal -ne $afterTotal -or $beforeCount -ne $afterCount) {
 
 **禁止**：单步查询、闲聊、单指令执行、需要主会话连贯上下文的对话。
 
-## 二、固定 4 个候选模型（按你的实际可用模型替换）
+## §2 固定 4 个候选模型（按你的实际可用模型替换）
 
 每次拉 subagent 前，**完整提供这 4 个**让用户选，**不要做任务类型推荐**：
 
@@ -166,15 +166,19 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 
 > 💡 **替换说明**：以上是 GCMP 路由插件暴露的模型示例。如果你用别的路由（one-api / new-api / litellm / Claude 原生），把这里换成你实际能调用的 4 个模型。用户可选 free text 输入其他字符串（如 `gpt-5-mini`）。
 
-## 三、两层嵌套规则（IRON RULE）
+## §3 两层嵌套规则 (IRON RULE)
 
-**subagent 再次拉起 subagent**（两层嵌套）→ **强制使用** 最省 token 的模型，**不再询问**。
+### §3.1 强制规则
+
+**subagent 再次拉起 subagent**（两层嵌套）→ **强制使用** `<CHEAPEST_MODEL>`（示例：`MiniMax-M3 (TokenPlan) (gcmp.minimax)`），**不再询问**。
 
 判断方法：subagent 在 prompt 中标注自己是"第 N 层 subagent"，再拉时如果是第 2 层及以上，直接用最省 token 的模型不问。
 
-**原因**：嵌套层数越多，上下文注入越冗余；把便宜/长 context 的模型留给深层嵌套。
+**原因**：嵌套层数越多，上下文注入越冗余；选中的最省 token 模型（如 MiniMax-M3）是**多模态 agent**，且**性价比较高**，适合嵌套场景节省 token 消耗。
 
-## 三.5、主会话注入给第 1 层 SA 的 prompt 规范
+> 💡 **替换说明**：如果你的 `<CHEAPEST_MODEL>` 不是 MiniMax-M3，请同时替换下文 §3.2 模板里出现的具体模型名。
+
+### §3.2 主会话注入给第 1 层 SA 的 prompt 规范
 
 **原则**：注入 prompt 时应**引用协议规则**，而非直接下达行为指令。
 
@@ -197,9 +201,7 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 2. 协议已存在——CLAUDE.md 已覆盖所有场景，无需在 prompt 里重复硬指令
 3. AI 可自适应——简单任务 SA 自主判断，复杂任务按规则拉下层
 
-> 💡 本节是**原则**而非 IRON RULE。反面示例仅作说明，不构成黑名单；真正生效的是"规则引用优先于行为指令"这个正向原则。
-
-## 四、拉起前必须询问（IRON RULE）
+## §4 拉起前必须询问 (IRON RULE)
 
 调用 `runSubagent` 前**必须**先 `vscode_askQuestions`（或等价的用户询问工具）：
 
@@ -207,13 +209,15 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 - 允许 free text
 - 拿到答案后通过 `model` 参数传完整字符串
 
-**例外**：两层嵌套场景跳过询问（见第三节）。
+**例外**：
+- 两层嵌套场景跳过询问（见 §3）。
+- foreman 角色固定模型（见长任务监理协议 §6）。
 
-## 五、查询当前可用 LLM
+## §5 查询当前可用 LLM
 
 `runSubagent(model="__invalid__", description="盘点", prompt="trigger error")` 故意触发错误，从 `Available models:` 字段读取完整列表。
 
-## 六、验证模型路由
+## §6 验证模型路由
 
 **黄金标准**：通过你路由后端的 usage / 日志面板查看新增记录的"提供商/模型"列。**subagent 自报身份不可靠**。
 
@@ -230,16 +234,16 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 
 > 💡 如果你用的 harness 不支持 deferredResultId（如纯 Claude Code CLI），可降级为"主会话定期检查落盘文件"模式，见本节末尾"降级方案"。
 
-## 一、强制触发条件（任一满足即必须拉监理 SA）
+## §1 强制触发条件（任一满足即必须拉监理 SA）
 
 1. **任务预计 >5 分钟**
 2. **子任务 >3 个 且可并行**
 3. **涉及网页抓取**（可能触发 Cloudflare 等反爬）
 4. **多源数据检索**（>1 数据库/网站）
 5. **用户明确要求"深度查询"/"深度研究"/"完整调研"**
-6. **批量文件操作**（>10 文件，配合批量安全协议）
+6. **批量文件操作**（**>3 文件**，配合批量安全协议）
 
-## 二、触发后的标准动作
+## §2 触发后的标准动作
 
 ```python
 # 伪代码
@@ -271,7 +275,9 @@ while True:
 # Step 5: 主会话读 .task_cache/<task_id>/ 汇总 → 生成报告
 ```
 
-## 三、标准目录结构（强制）
+> **数据源 SA 的 deferredResultId 由主会话保留**。若 foreman 在 poll 中报告某数据源 `progress.json` 超过 120s 未更新，主会话主动 resume 该数据源 SA 的 deferredResultId（避免数据源 SA 卡在工具调用上永久悬挂）。
+
+## §3 标准目录结构（强制）
 
 ```
 <WORKSPACE_PATH>/.research_cache/<task_id>/    # 研究类任务
@@ -290,7 +296,7 @@ while True:
 
 > 💡 **强烈建议**把 `.research_cache/` 和 `.task_cache/` 加入 `.gitignore`。
 
-## 四、监理 SA 角色
+## §4 监理 SA 角色
 
 **核心职责**：
 - 每 60s 读 `_status/*.progress.json`
@@ -299,13 +305,14 @@ while True:
 - 中途 resume 返回 ≤100 字摘要 + `[CONTINUE_POLLING]`
 - 最终返回 ≤500 字汇总
 
+foreman 是**监理角色**，职责限定为轮询 `progress.json` + 汇总，**不执行子任务**，因此无必要拉下层。其他**执行类**第 1 层 SA（research / code / web / shell worker）按 SUBAGENT 调度协议 §3 两层嵌套规则执行。
+
 **禁止**：
-- ❌ 拉起其他 subagent（**foreman 角色专属限制**：数据源 SA 由主会话直接管，foreman 自己不需要拉下层）
-- ℹ️ **其他非 foreman 的第 1 层 SA 不受此限制**，按 SUBAGENT 调度协议 §3 两层嵌套规则执行：允许拉下层，但强制用最省 token 模型，不再询问
+- ❌ 拉起其他 subagent（foreman 是监理角色，数据源 SA 由主会话直接管）
 - ❌ 读原始数据内容（只读 progress.json）
 - ❌ 修改子任务的 pageId 或文件
 
-## 五、子任务 SA 协议（通用）
+## §5 子任务 SA 协议（通用）
 
 所有子任务 SA（无论 research/code/web/shell）都必须遵守：
 
@@ -331,22 +338,24 @@ while True:
 }
 ```
 
-## 六、模型选择
+## §6 模型选择
 
-- **监理 SA**：强制用最省 token 的模型（省 token + 长 context）
-- **数据源 SA**：按 SUBAGENT 调度协议第二节（4 候选询问用户），除非两层嵌套则强制用最省 token 模型
+- **监理 SA**：**例外于 SUBAGENT 协议 §4**，foreman 角色固定使用最省 token 的模型（省 token + 长 context），无需询问
+- **数据源 SA**：按 SUBAGENT 调度协议 §2（4 候选询问用户）；两层嵌套则强制用最省 token 模型（见 SUBAGENT 协议 §3）
 - **主会话**：保持当前模型（贵的留给决策与汇总）
 
-## 七、何时不拉监理 SA（反例）
+## §7 何时不拉监理 SA（反例）
 
 - ❌ 单步查询（grep / read_file / 单次 API 调用）
-- ❌ 简单文件编辑（< 5 文件）
+- ❌ 简单文件编辑（**≤3 文件**）
 - ❌ 用户明确要"快速回答" / "简短"
 - ❌ 任务 <5 分钟且无反爬风险
 
+> ℹ️ 3 < N ≤ 5 文件区间：按批量安全协议逐个执行 + 主会话直接管，不拉 foreman。
+
 拉监理 SA 本身有开销（一次 SA 启动 ≈ 500 token + 5s），简单任务**不划算**。
 
-## 八、失败恢复
+## §8 失败恢复
 
 - 监理 SA 长时间不 resume → deferredResultId 失效 → 主会话重新拉一次 foreman
 - 新 foreman 读 `_status/foreman.poll_*.json` 恢复状态（从最新 poll 继续）

@@ -143,7 +143,7 @@ if ($beforeTotal -ne $afterTotal -or $beforeCount -ne $afterCount) {
 
 Forces all LLMs (regardless of main-session model) to spawn subagents under unified rules.
 
-## 1. Scenarios that MUST spawn subagent
+## §1 Scenarios that MUST spawn subagent
 
 1. **Independent code search/read** (>3 files or cross-directory) → spawn `explore` subagent
 2. **Independent research/analysis** (literature, data interpretation, tech research) → spawn `research` subagent
@@ -153,7 +153,7 @@ Forces all LLMs (regardless of main-session model) to spawn subagents under unif
 
 **Forbidden**: single-step queries, chitchat, single-command execution, anything needing main-session coherent context.
 
-## 2. Fixed 4 candidate models (replace with your actual models)
+## §2 Fixed 4 candidate models (replace with your actual models)
 
 Before each subagent spawn, **present all 4** for user to choose, **do not recommend based on task type**:
 
@@ -166,15 +166,19 @@ MiniMax-M3 (TokenPlan) (gcmp.minimax)
 
 > 💡 **Replacement note**: the above are examples exposed by the GCMP routing plugin. If you use another router (one-api / new-api / litellm / native Claude), replace with your actual callable models. Users can free-text another string (e.g. `gpt-5-mini`).
 
-## 3. Two-layer nesting rule (IRON RULE)
+## §3 Two-layer nesting rule (IRON RULE)
 
-**Subagent spawning subagent** (two-layer nesting) → **force use** of the cheapest-token model, **no asking**.
+### §3.1 Forced rule
 
-How to detect: subagent marks itself as "layer-N subagent" in its prompt. When spawning again at layer 2+, use the cheapest model without asking.
+**Subagent spawning subagent** (two-layer nesting) → **force use** of `<CHEAPEST_MODEL>` (example: `MiniMax-M3 (TokenPlan) (gcmp.minimax)`), **no asking**.
 
-**Reason**: deeper nesting = more context reinjection; cheap / long-context models fit deep nesting best.
+How to detect: subagent marks itself as "layer-N subagent" in its prompt. When spawning again at layer 2+, use the cheapest-token model without asking.
 
-## 3.5 Prompt injection norm for layer-1 SAs
+**Reason**: deeper nesting = more context reinjection. The chosen cheapest model (e.g. MiniMax-M3) is a **multimodal agent** with **good cost-efficiency**, well-suited to nesting scenarios to save token consumption.
+
+> 💡 **Replacement note**: if your `<CHEAPEST_MODEL>` is not MiniMax-M3, also update the model name in the §3.2 template below.
+
+### §3.2 Prompt injection norm for layer-1 SAs
 
 **Principle**: when injecting prompts, **reference the protocol rules** rather than issuing direct behavior directives.
 
@@ -185,8 +189,7 @@ How to detect: subagent marks itself as "layer-N subagent" in its prompt. When s
 
 **Recommended prompt header template**:
 
-```
-You are a layer-1 subagent, dispatched by the main session to execute <task type>.
+```You are a layer-1 subagent, dispatched by the main session to execute <task type>.
 Regarding whether to spawn lower-layer subagents, follow Subagent Protocol §3 two-layer nesting rule.
 Simple tasks: judge autonomously, no need to spawn lower layers.
 Complex tasks: spawning lower layers is allowed, but must use `<CHEAPEST_MODEL>`, no asking the user.
@@ -197,9 +200,7 @@ Complex tasks: spawning lower layers is allowed, but must use `<CHEAPEST_MODEL>`
 2. Protocol already exists — CLAUDE.md covers all scenarios, no need to duplicate hardcoded directives in prompts
 3. AI can self-adapt — simple tasks: SA judges autonomously; complex tasks: spawns lower layers per rule
 
-> 💡 This section is a **principle**, not an IRON RULE. The counter-examples are illustrative only and do not constitute a blacklist; what actually holds is the positive principle of "rule reference over behavior directive".
-
-## 4. Must ask before spawning (IRON RULE)
+## §4 Must ask before spawning (IRON RULE)
 
 Before calling `runSubagent`, **must** first call `vscode_askQuestions` (or equivalent user-prompt tool):
 
@@ -207,13 +208,15 @@ Before calling `runSubagent`, **must** first call `vscode_askQuestions` (or equi
 - Allow free text
 - Pass user's choice via `model` parameter
 
-**Exception**: two-layer nesting scenario skips asking (see §3).
+**Exceptions**:
+- Two-layer nesting scenario skips asking (see §3).
+- Foreman role uses fixed model (see Long-Task Foreman Protocol §6).
 
-## 5. Query currently available LLMs
+## §5 Query currently available LLMs
 
 `runSubagent(model="__invalid__", description="inventory", prompt="trigger error")` deliberately triggers an error, read the full list from the `Available models:` field.
 
-## 6. Verify model routing
+## §6 Verify model routing
 
 **Gold standard**: check your router backend's usage/log panel for "provider/model" column of new records. **Subagent self-report is not reliable.**
 
@@ -230,16 +233,16 @@ Before calling `runSubagent`, **must** first call `vscode_askQuestions` (or equi
 
 > 💡 If your harness doesn't support deferredResultId (e.g. plain Claude Code CLI), downgrade to "main-session periodically reads on-disk files" mode. See "Downgrade" at end of this section.
 
-## 1. Forced trigger conditions (any one → must spawn foreman SA)
+## §1 Forced trigger conditions (any one → must spawn foreman SA)
 
 1. **Task estimated >5 min**
 2. **>3 sub-tasks and parallelizable**
 3. **Involves web scraping** (may trigger Cloudflare or similar)
 4. **Multi-source data retrieval** (>1 database/website)
 5. **User explicitly asks for "deep query" / "deep research" / "comprehensive survey"**
-6. **Batch file ops** (>10 files, pair with Batch Safety Protocol)
+6. **Batch file ops** (**>3 files**, pair with Batch Safety Protocol)
 
-## 2. Standard actions after trigger
+## §2 Standard actions after trigger
 
 ```python
 # Pseudocode
@@ -271,7 +274,9 @@ while True:
 # Step 5: Main session reads .task_cache/<task_id>/ and synthesizes → report
 ```
 
-## 3. Standard directory layout (mandatory)
+> **Source SA deferredResultIds are retained by the main session.** If the foreman reports in a poll that some source's `progress.json` hasn't updated for over 120s, the main session actively resumes that source SA's deferredResultId (to avoid source SAs hanging indefinitely on tool calls).
+
+## §3 Standard directory layout (mandatory)
 
 ```
 <WORKSPACE_PATH>/.research_cache/<task_id>/    # research-type tasks
@@ -290,7 +295,7 @@ while True:
 
 > 💡 **Strongly recommend** adding `.research_cache/` and `.task_cache/` to `.gitignore`.
 
-## 4. Foreman SA role
+## §4 Foreman SA role
 
 **Core responsibilities**:
 - Every 60s read `_status/*.progress.json`
@@ -299,13 +304,14 @@ while True:
 - On mid-resume, return ≤100-word summary + `[CONTINUE_POLLING]`
 - Final return ≤500-word summary
 
+Foreman is a **supervisory role**, its responsibilities are limited to polling `progress.json` + summarizing; it **does not execute sub-tasks**, so there's no need to spawn lower layers. Other **execution-type** layer-1 SAs (research / code / web / shell worker) follow Subagent Protocol §3 two-layer nesting rule.
+
 **Forbidden**:
-- ❌ Spawn other subagents (**foreman-role-specific restriction**: source SAs are managed directly by the main session, foreman itself doesn't need to spawn lower layers)
-- ℹ️ **Other non-foreman layer-1 SAs are NOT subject to this restriction** — per Subagent Protocol §3 two-layer nesting rule: spawning lower layers is allowed, but must use the cheapest-token model, no asking
+- ❌ Spawn other subagents (foreman is supervisory; source SAs are managed directly by the main session)
 - ❌ Read raw data content (only read progress.json)
 - ❌ Modify sub-task pageId or files
 
-## 5. Sub-task SA protocol (universal)
+## §5 Sub-task SA protocol (universal)
 
 All sub-task SAs (research / code / web / shell) must:
 
@@ -331,22 +337,24 @@ All sub-task SAs (research / code / web / shell) must:
 }
 ```
 
-## 6. Model selection
+## §6 Model selection
 
-- **Foreman SA**: force cheapest-token model (save tokens + long context)
-- **Source SA**: per Subagent Protocol §2 (4 candidates ask user); two-layer nesting forces cheapest
+- **Foreman SA**: **exception to Subagent Protocol §4** — foreman role uses the cheapest-token model (save tokens + long context) without asking
+- **Source SA**: per Subagent Protocol §2 (4 candidates ask user); two-layer nesting forces cheapest (see Subagent Protocol §3)
 - **Main session**: keep current model (expensive model reserved for decisions & synthesis)
 
-## 7. When NOT to spawn foreman SA (counter-examples)
+## §7 When NOT to spawn foreman SA (counter-examples)
 
 - ❌ Single-step query (grep / read_file / one API call)
-- ❌ Simple file edit (<5 files)
+- ❌ Simple file edit (**≤3 files**)
 - ❌ User explicitly wants "quick answer" / "short"
 - ❌ Task <5 min and no anti-bot risk
 
+> ℹ️ 3 < N ≤ 5 files range: per Batch Safety Protocol, execute one-by-one + main session manages directly, no foreman.
+
 Spawning foreman SA itself has overhead (one SA start ≈ 500 tokens + 5s); not worth it for simple tasks.
 
-## 8. Failure recovery
+## §8 Failure recovery
 
 - Foreman SA hasn't resumed for long → deferredResultId expired → main session respawns foreman
 - New foreman reads `_status/foreman.poll_*.json` to recover (from latest poll)
